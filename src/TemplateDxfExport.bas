@@ -127,9 +127,25 @@ Sub main()
         Dim fullPath As String
         fullPath = UniqueFilePath(outFolder, SanitizeName(baseName) & ".dxf", confName)
 
+        ' --- Принудительно РАЗВЕРНУТЬ деталь перед экспортом ---
+        ' В конфигурациях из таблицы параметров гибы внутри элемента «Развёртка»
+        ' (Flat-Pattern) иногда остаются ПОГАШЕНЫ — тогда ExportToDWG2 выгружает
+        ' деталь СЛОЖЁННОЙ. Снимаем погашение с гибов и выделяем элемент развёртки
+        ' (так требует API экспорта развёртки).
+        Dim swFlatFeat As Feature
+        Set swFlatFeat = UnfoldFlatPattern(swModel)
+        swModel.EditRebuild3
+        swModel.ClearSelection2 True
+        If Not swFlatFeat Is Nothing Then swFlatFeat.Select False
+
         Dim status As Boolean
+        ' 8-й аргумент — опции листового металла (битовая маска):
+        '   1 = геометрия развёртки, 2 = скрытые кромки, 4 = линии гиба, 8 = эскизы,
+        '   64 = инструменты формовки, 2048 = габаритный прямоугольник.
+        ' 1 = «выгрузить геометрию развёртки» (раньше было 0 — геометрия могла не попасть).
+        ' Нужны линии гиба — поставь 1 + 4 = 5.
         status = swPart.ExportToDWG2(fullPath, modelPath, _
-            swExportToDWG_ExportSheetMetal, True, Nothing, False, False, 0, Nothing)
+            swExportToDWG_ExportSheetMetal, True, Nothing, False, False, 1, Nothing)
 
         If status Then
             okCount = okCount + 1
@@ -274,6 +290,34 @@ Private Function HasSheetMetal(swModel As ModelDoc2) As Boolean
         Set swFeat = swFeat.GetNextFeature
     Loop
     HasSheetMetal = False
+End Function
+
+' Снять погашение с гибов внутри элемента «Развёртка» (Flat-Pattern) активной
+' конфигурации и вернуть сам элемент развёртки (или Nothing, если его нет).
+' Без этого деталь, собранная через таблицу параметров, может выгрузиться СЛОЖЁННОЙ:
+' в части конфигураций под-элементы гибов остаются погашены и развёртка не строится.
+Private Function UnfoldFlatPattern(swModel As ModelDoc2) As Feature
+    On Error Resume Next
+    Dim swFeat As Feature
+    Set swFeat = swModel.FirstFeature
+    Do While Not swFeat Is Nothing
+        If swFeat.GetTypeName2 = "FlatPattern" Then
+            Dim swSub As Feature
+            Set swSub = swFeat.GetFirstSubFeature
+            Do While Not swSub Is Nothing
+                Dim tn As String
+                tn = swSub.GetTypeName2
+                If tn = "UiBend" Or tn = "ProfileFeature" Then
+                    swSub.SetSuppression2 swUnSuppressFeature, swThisConfiguration, Nothing
+                End If
+                Set swSub = swSub.GetNextSubFeature
+            Loop
+            Set UnfoldFlatPattern = swFeat
+            Exit Function
+        End If
+        Set swFeat = swFeat.GetNextFeature
+    Loop
+    Set UnfoldFlatPattern = Nothing
 End Function
 
 
