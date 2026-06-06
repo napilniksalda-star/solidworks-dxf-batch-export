@@ -1,0 +1,21 @@
+# Данные клиента — не публиковать
+*.xlsx
+
+# Рабочие файлы SolidWorks (модели/сборки/чертежи — данные клиента)
+*.SLDPRT
+*.SLDASM
+*.SLDDRW
+*.sldprt
+*.sldasm
+*.slddrw
+
+# Бинарные макросы SolidWorks (источник истины — src/*.bas)
+*.swp
+
+# Черновики / временные / системные
+bla bla.md
+_*.py
+_*.txt
+~$*
+Thumbs.db
+Desktop.ini
