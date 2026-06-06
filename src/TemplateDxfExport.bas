@@ -15,11 +15,13 @@
 '         Без префикса SolidWorks свойство не примет.
 '
 '  3. ШАБЛОН ИМЕНИ — Файл → Свойства → вкладка «Настройки» → свойство
-'     Шаблон_имени = будущее имя файла с подстановками в ФИГУРНЫХ скобках { }:
-'           {D1@Эскиз1}   -> значение РАЗМЕРА из геометрии, мм   (есть «@»)
-'           {Количество}  -> значение СВОЙСТВА                   (нет «@»)
-'     ВАЖНО: только скобки { }, НЕ кавычки " ".  С кавычками SolidWorks
-'     вычислит выражение сам — и тогда у всех файлов будет ОДНО имя.
+'     Шаблон_имени = будущее имя файла. Подставляемые части можно записать
+'     ДВУМЯ способами (работают одинаково):
+'        • кавычки  "D1@Эскиз1"  — SolidWorks сам вставляет размер, когда
+'                                  кликаешь по нему на детали (удобно);
+'        • скобки   {D1@Эскиз1}  — если вписываешь вручную.
+'     Содержимое: есть «@» -> РАЗМЕР (мм); нет «@» -> СВОЙСТВО (напр. {Количество}).
+'     Хвост вида @Деталь2.SLDPRT макрос отбрасывает сам.
 '
 '  ПРИМЕР шаблона (значение свойства Шаблон_имени):
 '     Уголок {D1@Эскиз1}x{D2@Эскиз1}x{D2@Базовая кромка1}_Qty_{Количество}
@@ -52,28 +54,32 @@ Sub main()
     modelPath = swModel.GetPathName
     If modelPath = "" Then MsgBox "Сначала сохрани файл!": Exit Sub
 
-    ' Шаблон имени из свойства файла
+    ' Шаблон имени из свойства файла — СЫРОЕ значение (с кавычками "..." или скобками {...})
     Dim template As String
-    template = ReadFileProp(swModel, TEMPLATE_PROP)
+    template = ReadFilePropRaw(swModel, TEMPLATE_PROP)
     If Trim(template) = "" Then
-        MsgBox "Добавь в свойства файла (вкладка «Настройка») свойство '" & TEMPLATE_PROP & "'" & vbCrLf & _
+        MsgBox "Добавь в свойства файла (вкладка «Настройки») свойство '" & TEMPLATE_PROP & "'" & vbCrLf & _
                "с шаблоном имени, например:" & vbCrLf & _
-               "уголок_{D1@Эскиз1}x{D2@Эскиз1}_{Длина}_Qty_{Количество}"
-        Exit Sub
-    End If
-
-    ' Нет подстановок { } -> скорее всего шаблон записан кавычками SolidWorks
-    If InStr(template, "{") = 0 Then
-        MsgBox "В шаблоне нет подстановок в фигурных скобках { }." & vbCrLf & vbCrLf & _
-               "Сейчас: " & template & vbCrLf & vbCrLf & _
-               "Используй ФИГУРНЫЕ СКОБКИ (не кавычки SolidWorks), например:" & vbCrLf & _
                "Уголок {D1@Эскиз1}x{D2@Эскиз1}x{D2@Базовая кромка1}_Qty_{Количество}"
         Exit Sub
     End If
 
-    ' Парность скобок
+    ' Нет подстановок (ни "...", ни {...}) -> имя будет одинаковым у всех конфигураций
+    If InStr(template, "{") = 0 And InStr(template, """") = 0 Then
+        MsgBox "В шаблоне нет подстановок." & vbCrLf & vbCrLf & _
+               "Сейчас: " & template & vbCrLf & vbCrLf & _
+               "Кликни по размерам детали (SolidWorks вставит их в кавычках) " & _
+               "или впиши вручную в скобках, напр. {D1@Эскиз1}, {Количество}."
+        Exit Sub
+    End If
+
+    ' Парность скобок и кавычек
     If CountChar(template, "{") <> CountChar(template, "}") Then
         MsgBox "В шаблоне непарные скобки { }:" & vbCrLf & template
+        Exit Sub
+    End If
+    If (CountChar(template, """") Mod 2) <> 0 Then
+        MsgBox "В шаблоне нечётное число кавычек:" & vbCrLf & template
         Exit Sub
     End If
 
@@ -171,7 +177,8 @@ Private Function ResolvePlaceholder(swModel As ModelDoc2, ByVal confName As Stri
     End If
 End Function
 
-' Собрать базовое имя из шаблона (без расширения). ok=False при непарной скобке или ненайденном размере
+' Собрать базовое имя из шаблона (без расширения). Плейсхолдеры — в скобках {..} ИЛИ кавычках "..".
+' ok=False при непарном плейсхолдере или ненайденном размере.
 Private Function BuildNameFromTemplate(swModel As ModelDoc2, ByVal confName As String, _
                                        ByVal template As String, ByRef ok As Boolean) As String
     ok = True
@@ -179,13 +186,24 @@ Private Function BuildNameFromTemplate(swModel As ModelDoc2, ByVal confName As S
     result = template
     Dim guard As Integer
     Do
-        Dim p1 As Long, p2 As Long
-        p1 = InStr(result, "{")
-        If p1 = 0 Then Exit Do
-        p2 = InStr(p1 + 1, result, "}")
+        ' ближайший плейсхолдер: фигурная скобка { или кавычка "
+        Dim pBrace As Long, pQuote As Long, p1 As Long
+        Dim closer As String
+        pBrace = InStr(result, "{")
+        pQuote = InStr(result, """")
+        If pBrace = 0 And pQuote = 0 Then Exit Do
+        If pQuote = 0 Or (pBrace > 0 And pBrace < pQuote) Then
+            p1 = pBrace
+            closer = "}"
+        Else
+            p1 = pQuote
+            closer = """"
+        End If
+        Dim p2 As Long
+        p2 = InStr(p1 + 1, result, closer)
         If p2 = 0 Then ok = False: BuildNameFromTemplate = "": Exit Function
         Dim token As String
-        token = Mid(result, p1 + 1, p2 - p1 - 1)
+        token = CleanRef(Mid(result, p1 + 1, p2 - p1 - 1))
         Dim okOne As Boolean, val As String
         val = ResolvePlaceholder(swModel, confName, token, okOne)
         If Not okOne Then ok = False: BuildNameFromTemplate = "": Exit Function
@@ -196,16 +214,37 @@ Private Function BuildNameFromTemplate(swModel As ModelDoc2, ByVal confName As S
     BuildNameFromTemplate = result
 End Function
 
+' Убрать хвост "@Имя_файла.SLDPRT", который SolidWorks добавляет к ссылке на размер
+Private Function CleanRef(ByVal t As String) As String
+    Dim lastAt As Long
+    lastAt = InStrRev(t, "@")
+    If lastAt > 0 Then
+        If InStr(Mid(t, lastAt + 1), ".") > 0 Then   ' после последнего @ — имя файла
+            t = Left(t, lastAt - 1)
+        End If
+    End If
+    CleanRef = t
+End Function
+
 
 ' ===== ЧТЕНИЕ СВОЙСТВ / ГЕОМЕТРИИ =====
 
-' Значение свойства уровня ФАЙЛА
+' Значение свойства уровня ФАЙЛА (вычисленное SolidWorks)
 Private Function ReadFileProp(swModel As ModelDoc2, ByVal propName As String) As String
     Dim cpm As Object
     Set cpm = swModel.Extension.CustomPropertyManager("")
     Dim valOut As String, resolved As String
     cpm.Get4 propName, False, valOut, resolved
     ReadFileProp = resolved
+End Function
+
+' СЫРОЕ значение свойства файла (как введено: с кавычками/скобками, без вычисления SolidWorks)
+Private Function ReadFilePropRaw(swModel As ModelDoc2, ByVal propName As String) As String
+    Dim cpm As Object
+    Set cpm = swModel.Extension.CustomPropertyManager("")
+    Dim valOut As String, resolved As String
+    cpm.Get4 propName, False, valOut, resolved
+    ReadFilePropRaw = valOut
 End Function
 
 ' Значение свойства КОНФИГУРАЦИИ (или "")
