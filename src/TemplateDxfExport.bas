@@ -32,6 +32,15 @@ Sub main()
         Exit Sub
     End If
 
+    ' Нет подстановок { } -> скорее всего шаблон записан кавычками SolidWorks
+    If InStr(template, "{") = 0 Then
+        MsgBox "В шаблоне нет подстановок в фигурных скобках { }." & vbCrLf & vbCrLf & _
+               "Сейчас: " & template & vbCrLf & vbCrLf & _
+               "Используй ФИГУРНЫЕ СКОБКИ (не кавычки SolidWorks), например:" & vbCrLf & _
+               "Уголок {D1@Эскиз1}x{D2@Эскиз1}x{D2@Базовая кромка1}_Qty_{Количество}"
+        Exit Sub
+    End If
+
     ' Парность скобок
     If CountChar(template, "{") <> CountChar(template, "}") Then
         MsgBox "В шаблоне непарные скобки { }:" & vbCrLf & template
