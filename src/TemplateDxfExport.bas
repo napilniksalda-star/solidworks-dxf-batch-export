@@ -1,4 +1,5 @@
-Attribute VB_Name = "TemplateDxfExport"
+' TemplateDxfExport — экспорт развёрток в DXF по шаблону имени.
+' Вставляй копипастом в модуль макроса SolidWorks (строка Attribute не нужна).
 Option Explicit
 
 ' ====== НАСТРОЙКА ======

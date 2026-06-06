@@ -40,7 +40,7 @@
 - [ ] **Step 1: Создать файл с каркасом**
 
 ```vba
-Attribute VB_Name = "TemplateDxfExport"
+' TemplateDxfExport — вставляй копипастом в модуль макроса (строка Attribute не нужна)
 Option Explicit
 
 ' ====== НАСТРОЙКА ======
